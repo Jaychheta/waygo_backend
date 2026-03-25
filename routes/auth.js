@@ -29,15 +29,15 @@ router.post('/register', async (req, res) => {
     const token = jwt.sign({ id: newUser.rows[0].id }, "waygo_secret_key", { expiresIn: "1h" });
 
     // Send Token + User
-    res.json({ 
+    res.json({
       message: "Registration successful",
-      token, 
-      user: newUser.rows[0] 
+      token,
+      user: newUser.rows[0]
     });
 
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send("Server Error");
+    console.error('[register error]', err.message);
+    res.status(500).json({ message: 'Internal server error. Please try again.' });
   }
 });
 
@@ -46,7 +46,7 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     const user = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
-    
+
     if (user.rows.length === 0) {
       return res.status(401).json({ message: "Email or Password incorrect" });
     }
@@ -58,15 +58,15 @@ router.post('/login', async (req, res) => {
 
     const token = jwt.sign({ id: user.rows[0].id }, "waygo_secret_key", { expiresIn: "1h" });
 
-    res.json({ 
+    res.json({
       message: "Login successful",
-      token, 
-      user: user.rows[0] 
+      token,
+      user: user.rows[0]
     });
 
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send("Server Error");
+    console.error('[login error]', err.message);
+    res.status(500).json({ message: 'Internal server error. Please try again.' });
   }
 });
 
