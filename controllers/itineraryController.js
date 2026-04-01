@@ -1,4 +1,5 @@
 const Groq = require("groq-sdk");
+const axios = require("axios");
 
 // Initialize Groq client
 const groq = new Groq({
@@ -6,6 +7,48 @@ const groq = new Groq({
 });
 
 const GROQ_MODEL = "llama-3.3-70b-versatile"; // ✅ Free, fast, smart
+
+// ── Unique Place Image Fetcher ────────────────────────────────────────────────
+// Uses Wikipedia REST API (no key needed) to get a SPECIFIC photo for each place.
+// Falls back to Unsplash search by place name.
+async function fetchPlaceImage(placeName, city) {
+    const safePlace = (placeName || '').trim();
+    const safeCity  = (city || '').trim();
+    if (!safePlace) return '';
+
+    // 1. Try Wikipedia REST API for specific place (most accurate)
+    const queries = [
+        `${safePlace} ${safeCity}`,
+        safePlace,
+        `${safePlace} ${safeCity.split(',')[0].trim()}`,
+    ];
+    for (const q of queries) {
+        try {
+            const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(q)}`;
+            const resp = await axios.get(url, { headers: { 'User-Agent': 'WayGoApp/1.0' }, timeout: 4000 });
+            const thumb = resp.data?.thumbnail?.source || resp.data?.originalimage?.source;
+            // Filter out flag/coat-of-arms images
+            if (thumb && !/flag|coat|arms|emblem|crest|seal/i.test(thumb)) {
+                return thumb;
+            }
+        } catch (_) {}
+    }
+
+    // 2. Unsplash search by place name (free, no key, redirect to real photo)
+    const encoded = encodeURIComponent(`${safePlace} ${safeCity}`.trim());
+    return `https://source.unsplash.com/800x600/?${encoded}`;
+}
+
+// Enrich all places in days array with unique image_url (runs in parallel per day)
+async function enrichDaysWithImages(days, destination) {
+    return Promise.all(days.map(async (day) => ({
+        ...day,
+        places: await Promise.all(day.places.map(async (p) => ({
+            ...p,
+            image_url: await fetchPlaceImage(p.name || p.placeName, destination).catch(() => ''),
+        }))),
+    })));
+}
 
 // ── Mock Fallback Itinerary ──────────────────────────────────────────────────
 function getMockItinerary(destination, days) {
@@ -189,11 +232,15 @@ Category must be one of: Heritage, Food, Nature, Entertainment, Culture.`;
             }
 
             console.log(`✅ Groq AI success! (${validatedDays.length} days generated for "${destination}")`);
+
+            // Enrich each place with its OWN unique image
+            const enrichedDays = await enrichDaysWithImages(validatedDays, destination);
+
             return res.status(200).json({
                 success: true,
                 data: {
                     tripTitle: parsedData.tripTitle || `${numberOfDays}-Day ${destination} Trip`,
-                    days: validatedDays
+                    days: enrichedDays
                 }
             });
 
@@ -201,11 +248,13 @@ Category must be one of: Heritage, Food, Nature, Entertainment, Culture.`;
             console.warn(`⚠️ Groq API failed: ${apiErr.message}`);
         }
 
-        // Fallback to mock
+        // Fallback to mock — also enrich with images
         console.warn(`🆘 All AI models exhausted. Serving mock itinerary for "${destination}".`);
+        const mockData = getMockItinerary(destination, numberOfDays);
+        const enrichedMock = await enrichDaysWithImages(mockData.days, destination);
         return res.status(200).json({
             success: true,
-            data: getMockItinerary(destination, numberOfDays)
+            data: { ...mockData, days: enrichedMock }
         });
 
     } catch (globalErr) {

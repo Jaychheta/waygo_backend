@@ -41,14 +41,20 @@ async function initTables() {
     {
       name: 'trips',
       sql: `CREATE TABLE IF NOT EXISTS trips (
-        id         SERIAL PRIMARY KEY,
-        user_id    INTEGER REFERENCES users(id) ON DELETE CASCADE,
-        name       VARCHAR(255),
-        start_date TIMESTAMP,
-        end_date   TIMESTAMP,
-        location   VARCHAR(255),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        id              SERIAL PRIMARY KEY,
+        user_id         INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        name            VARCHAR(255),
+        start_date      TIMESTAMP,
+        end_date        TIMESTAMP,
+        location        VARCHAR(255),
+        cover_image_url TEXT,
+        created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )`,
+    },
+    {
+      // Add column to existing trips table if it doesn't have it yet
+      name: 'trips.cover_image_url migration',
+      sql: `ALTER TABLE trips ADD COLUMN IF NOT EXISTS cover_image_url TEXT`,
     },
     {
       name: 'trip_places',
