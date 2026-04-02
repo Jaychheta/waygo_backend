@@ -143,9 +143,20 @@ async function verifyTripOwnership(req, res, next) {
             return res.status(404).json({ message: 'Trip not found' });
         }
 
-        if (result.rows[0].user_id !== req.userId) {
+        const isOwner = result.rows[0].user_id === req.userId;
+        
+        // Also check if member
+        const memberResult = await pool.query(
+            'SELECT id FROM trip_members WHERE trip_id = $1 AND user_id = $2',
+            [tripId, req.userId]
+        );
+        const isMember = memberResult.rows.length > 0;
+
+        if (!isOwner && !isMember) {
+            console.log(`❌ Ownership failed for user ${req.userId} on trip ${tripId}`);
             return res.status(403).json({ message: 'Unauthorized access to this trip' });
         }
+        console.log(`✅ Ownership verified for user ${req.userId} on trip ${tripId}`);
 
         next();
     } catch (err) {
@@ -344,39 +355,158 @@ router.get('/trip/:trip_id/places', authMiddleware, verifyTripOwnership, async (
 router.post('/add-expense', authMiddleware, verifyTripOwnership, async (req, res) => {
     try {
         const { trip_id, title, amount, category } = req.body;
+        console.log(`📡 Adding expense to trip ${trip_id}: ${title} (₹${amount}) by user ${req.userId}`);
+        
         await pool.query(
-            'INSERT INTO trip_expenses (trip_id, title, amount, category) VALUES ($1, $2, $3, $4)',
-            [trip_id, title, amount, category || 'Others']
+            'INSERT INTO trip_expenses (trip_id, title, amount, category, user_id) VALUES ($1, $2, $3, $4, $5)',
+            [trip_id, title, amount, category || 'Others', req.userId || null]
         );
+        console.log(`✅ Expense added successfully!`);
         res.json({ success: true, message: "Expense added!" });
     } catch (err) {
+        console.error('❌ Add expense error:', err);
         res.status(500).json({ success: false, message: 'Error adding expense.' });
     }
 });
 
-// ૬. VIEW EXPENSES — SECURED & OWNERSHIP VERIFIED
-router.get('/trip/:trip_id/expenses', authMiddleware, verifyTripOwnership, async (req, res) => {
+// ૭. GET TRIP MEMBERS
+router.get('/:trip_id/members', authMiddleware, verifyTripOwnership, async (req, res) => {
     try {
         const { trip_id } = req.params;
         const result = await pool.query(
-            'SELECT * FROM trip_expenses WHERE trip_id = $1 ORDER BY id DESC',
+            `SELECT u.id, u.name, u.email 
+             FROM users u 
+             JOIN trip_members tm ON u.id = tm.user_id 
+             WHERE tm.trip_id = $1`,
             [trip_id]
         );
+        
+        // Also fetch the owner
+        const ownerResult = await pool.query(
+            `SELECT u.id, u.name, u.email 
+             FROM users u 
+             JOIN trips t ON u.id = t.user_id 
+             WHERE t.id = $1`,
+            [trip_id]
+        );
+
+        const members = result.rows;
+        const owner = ownerResult.rows[0];
+        
+        // Combine them ensuring no duplicates
+        const allParticipants = [owner, ...members.filter(m => m.id !== owner.id)];
+        
+        res.json(allParticipants);
+    } catch (err) {
+        console.error('❌ Fetch members error:', err);
+        res.status(500).json({ success: false, message: 'Error fetching members.' });
+    }
+});
+router.get('/trip/:trip_id/expenses', authMiddleware, verifyTripOwnership, async (req, res) => {
+    try {
+        const { trip_id } = req.params;
+        console.log(`📡 Fetching expenses for trip ${trip_id}...`);
+        
+        const result = await pool.query(
+            `SELECT e.*, u.name as spender 
+             FROM trip_expenses e 
+             LEFT JOIN users u ON e.user_id = u.id 
+             WHERE e.trip_id = $1 
+             ORDER BY e.date ASC`,
+            [trip_id]
+        );
+        console.log(`✅ Found ${result.rows.length} expenses for trip ${trip_id}`);
         res.json(result.rows);
     } catch (err) {
+        console.error('❌ Fetch expenses error:', err);
         res.status(500).json({ success: false, message: 'Error fetching expenses.' });
     }
 });
 
+// ── DELETE EXPENSE — SECURED (only expense owner)
+router.delete('/expense/:expense_id', authMiddleware, async (req, res) => {
+    try {
+        const { expense_id } = req.params;
+        const check = await pool.query('SELECT user_id FROM trip_expenses WHERE id = $1', [expense_id]);
+        if (check.rows.length === 0) return res.status(404).json({ success: false, message: 'Expense not found.' });
+        if (check.rows[0].user_id !== req.userId) return res.status(403).json({ success: false, message: 'Not your expense.' });
+        await pool.query('DELETE FROM trip_expenses WHERE id = $1', [expense_id]);
+        res.json({ success: true, message: 'Expense deleted.' });
+    } catch (err) {
+        console.error('❌ Delete expense error:', err);
+        res.status(500).json({ success: false, message: 'Error deleting expense.' });
+    }
+});
+
+// ── UPDATE EXPENSE — SECURED (only expense owner)
+router.patch('/expense/:expense_id', authMiddleware, async (req, res) => {
+    try {
+        const { expense_id } = req.params;
+        const { title, amount, category } = req.body;
+        const check = await pool.query('SELECT user_id FROM trip_expenses WHERE id = $1', [expense_id]);
+        if (check.rows.length === 0) return res.status(404).json({ success: false, message: 'Expense not found.' });
+        if (check.rows[0].user_id !== req.userId) return res.status(403).json({ success: false, message: 'Not your expense.' });
+        const result = await pool.query(
+            'UPDATE trip_expenses SET title = COALESCE($1, title), amount = COALESCE($2, amount), category = COALESCE($3, category) WHERE id = $4 RETURNING *',
+            [title || null, amount || null, category || null, expense_id]
+        );
+        res.json({ success: true, expense: result.rows[0] });
+    } catch (err) {
+        console.error('❌ Update expense error:', err);
+        res.status(500).json({ success: false, message: 'Error updating expense.' });
+    }
+});
+
+// 6.5 FETCH MESSAGES
+router.get('/trip/:trip_id/messages', authMiddleware, verifyTripOwnership, async (req, res) => {
+    try {
+        const { trip_id } = req.params;
+        const result = await pool.query(
+            `SELECT m.*, u.name as sender_name 
+             FROM trip_messages m 
+             LEFT JOIN users u ON m.user_id = u.id 
+             WHERE m.trip_id = $1 
+             ORDER BY m.created_at ASC`,
+            [trip_id]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        console.error('❌ Fetch messages error:', err);
+        res.status(500).json({ success: false, message: 'Error fetching messages.' });
+    }
+});
+
+// 6.6 ADD MESSAGE
+router.post('/add-message', authMiddleware, verifyTripOwnership, async (req, res) => {
+    try {
+        const { trip_id, message } = req.body;
+        await pool.query(
+            'INSERT INTO trip_messages (trip_id, user_id, message) VALUES ($1, $2, $3)',
+            [trip_id, req.userId, message]
+        );
+        res.json({ success: true, message: "Message sent!" });
+    } catch (err) {
+        console.error('❌ Add message error:', err);
+        res.status(500).json({ success: false, message: 'Error sending message.' });
+    }
+});
+
+
 // ૭. LOGGED-IN USER TRIPS
 router.get('/my', authMiddleware, async (req, res) => {
     try {
+        console.log(`📡 Fetching trips for user ${req.userId}...`);
         const allTrips = await pool.query(
-            'SELECT * FROM trips WHERE user_id = $1 ORDER BY start_date DESC',
+            `SELECT * FROM trips 
+             WHERE user_id = $1 
+                OR id IN (SELECT trip_id FROM trip_members WHERE user_id = $1) 
+             ORDER BY start_date DESC`,
             [req.userId]
         );
+        console.log(`✅ Found ${allTrips.rows.length} trips for user ${req.userId}`);
         res.json(allTrips.rows);
     } catch (err) {
+        console.error('❌ Fetch my trips error:', err);
         res.status(500).json({ success: false, message: 'Server Error' });
     }
 });
@@ -425,6 +555,89 @@ router.post('/ai/save-full', authMiddleware, async (req, res) => {
     } catch (err) {
         console.error('Save full itinerary error:', err.message);
         res.status(500).json({ success: false, message: 'Failed to save full itinerary.' });
+    }
+});
+
+// ૧૦. DELETE TRIP — SECURED & OWNERSHIP VERIFIED
+router.delete('/:trip_id', authMiddleware, verifyTripOwnership, async (req, res) => {
+    try {
+        const { trip_id } = req.params;
+        await pool.query('DELETE FROM trips WHERE id = $1', [trip_id]);
+        res.json({ success: true, message: "Trip deleted successfully!" });
+    } catch (err) {
+        console.error('Delete trip error:', err.message);
+        res.status(500).json({ success: false, message: 'Failed to delete trip.' });
+    }
+});
+
+// ૧૧. UPDATE TRIP — SECURED & OWNERSHIP VERIFIED
+router.put('/:trip_id', authMiddleware, verifyTripOwnership, async (req, res) => {
+    try {
+        const { trip_id } = req.params;
+        const { name, start_date, end_date, location } = req.body;
+        
+        if (!name || !start_date || !end_date) {
+            return res.status(400).json({ message: 'Missing fields' });
+        }
+
+        const result = await pool.query(
+            'UPDATE trips SET name = $1, start_date = $2, end_date = $3, location = $4 WHERE id = $5 RETURNING *',
+            [name, start_date, end_date, location, trip_id]
+        );
+
+        res.json({ success: true, trip: result.rows[0], message: "Trip updated successfully!" });
+    } catch (err) {
+        console.error('Update trip error:', err.message);
+        res.status(500).json({ success: false, message: 'Failed to update trip.' });
+    }
+});
+
+// ૧૦. GENERATE JOIN CODE — SECURED
+router.post('/:trip_id/share', authMiddleware, verifyTripOwnership, async (req, res) => {
+    try {
+        const { trip_id } = req.params;
+        console.log(`📡 Fetching or generating share code for trip ${trip_id}...`);
+        
+        // 1. Check if code already exists
+        const existing = await pool.query('SELECT join_code FROM trips WHERE id = $1', [trip_id]);
+        if (existing.rows.length > 0 && existing.rows[0].join_code) {
+            console.log(`✅ Returning existing code: ${existing.rows[0].join_code}`);
+            return res.json({ success: true, join_code: existing.rows[0].join_code });
+        }
+
+        // 2. Generate if not exists
+        const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+        await pool.query('UPDATE trips SET join_code = $1 WHERE id = $2', [code, trip_id]);
+        console.log(`✨ Generated new code: ${code}`);
+        res.json({ success: true, join_code: code });
+    } catch (err) {
+        console.error('❌ Share error:', err);
+        res.status(500).json({ success: false, message: 'Error generating code.' });
+    }
+});
+
+// ૧૧. JOIN TRIP BY CODE
+router.post('/join', authMiddleware, async (req, res) => {
+    try {
+        const { join_code } = req.body;
+        if (!join_code) return res.status(400).json({ message: 'Code is required' });
+
+        const tripResult = await pool.query('SELECT id FROM trips WHERE join_code = $1', [join_code.toUpperCase()]);
+        if (tripResult.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Invalid join code.' });
+        }
+
+        const trip_id = tripResult.rows[0].id;
+
+        // Add currently logged in user to members
+        await pool.query(
+            'INSERT INTO trip_members (trip_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+            [trip_id, req.userId]
+        );
+
+        res.json({ success: true, message: 'Successfully joined the trip!', trip_id });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Error joining trip.' });
     }
 });
 

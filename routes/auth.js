@@ -26,7 +26,7 @@ router.post('/register', async (req, res) => {
     );
 
     // --- NEW: GENERATE TOKEN ---
-    const token = jwt.sign({ id: newUser.rows[0].id }, "waygo_secret_key", { expiresIn: "1h" });
+    const token = jwt.sign({ id: newUser.rows[0].id }, process.env.JWT_SECRET || "waygo_secret_key", { expiresIn: "1h" });
 
     // Send Token + User
     res.json({
@@ -56,7 +56,7 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: "Email or Password incorrect" });
     }
 
-    const token = jwt.sign({ id: user.rows[0].id }, "waygo_secret_key", { expiresIn: "1h" });
+    const token = jwt.sign({ id: user.rows[0].id }, process.env.JWT_SECRET || "waygo_secret_key", { expiresIn: "1h" });
 
     res.json({
       message: "Login successful",

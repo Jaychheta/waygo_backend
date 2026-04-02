@@ -1,0 +1,152 @@
+[
+  {
+    "id": 1,
+    "user_id": 1,
+    "name": "france",
+    "location": "India"
+  },
+  {
+    "id": 2,
+    "user_id": 1,
+    "name": "manali",
+    "location": "India"
+  },
+  {
+    "id": 3,
+    "user_id": 1,
+    "name": "mumbai",
+    "location": "India"
+  },
+  {
+    "id": 4,
+    "user_id": 1,
+    "name": "India",
+    "location": "India"
+  },
+  {
+    "id": 5,
+    "user_id": 1,
+    "name": "spiti valley",
+    "location": "India"
+  },
+  {
+    "id": 6,
+    "user_id": 1,
+    "name": "karnatak",
+    "location": "India"
+  },
+  {
+    "id": 7,
+    "user_id": 1,
+    "name": "France",
+    "location": "France"
+  },
+  {
+    "id": 8,
+    "user_id": 1,
+    "name": "France",
+    "location": "France"
+  },
+  {
+    "id": 9,
+    "user_id": 1,
+    "name": "Phuket",
+    "location": "Phuket"
+  },
+  {
+    "id": 10,
+    "user_id": 1,
+    "name": "phuket",
+    "location": "India"
+  },
+  {
+    "id": 11,
+    "user_id": 1,
+    "name": "goa",
+    "location": "India"
+  },
+  {
+    "id": 12,
+    "user_id": 1,
+    "name": "vcofee",
+    "location": "vcofee"
+  },
+  {
+    "id": 13,
+    "user_id": 10,
+    "name": "manali",
+    "location": "India"
+  },
+  {
+    "id": 14,
+    "user_id": 7,
+    "name": "manali",
+    "location": "India"
+  },
+  {
+    "id": 15,
+    "user_id": 7,
+    "name": "manali",
+    "location": "India"
+  },
+  {
+    "id": 16,
+    "user_id": 7,
+    "name": "goa",
+    "location": "India"
+  },
+  {
+    "id": 17,
+    "user_id": 7,
+    "name": "Mumbai, Maharashtra, India",
+    "location": "India"
+  },
+  {
+    "id": 18,
+    "user_id": 7,
+    "name": "manli",
+    "location": "India"
+  },
+  {
+    "id": 19,
+    "user_id": 7,
+    "name": "mumbai",
+    "location": "India"
+  },
+  {
+    "id": 20,
+    "user_id": 7,
+    "name": "Mumbai, Maharashtra, India",
+    "location": "India"
+  },
+  {
+    "id": 21,
+    "user_id": 7,
+    "name": "mumbai",
+    "location": "India"
+  },
+  {
+    "id": 22,
+    "user_id": 7,
+    "name": "tokyo",
+    "location": "India"
+  },
+  {
+    "id": 24,
+    "user_id": 11,
+    "name": "Delhi, Delhi, India",
+    "location": "Delhi, Delhi, India"
+  },
+  {
+    "id": 25,
+    "user_id": 11,
+    "name": "Mumbai, Maharashtra, India",
+    "location": "Mumbai, Maharashtra, India"
+  },
+  {
+    "id": 23,
+    "user_id": 11,
+    "name": "hello",
+    "location": "India"
+  }
+]
